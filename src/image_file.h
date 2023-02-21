@@ -91,7 +91,7 @@ public:
     }
 
     void set_auth_failed();
-    int open_lower_layer(IFile *&file, ImageConfigNS::LayerConfig &layer, int index);
+    int open_lower_layer(IFile *&file, IFile *&data_file, ImageConfigNS::LayerConfig &layer, int index);
 
     std::string m_exception;
     int m_status = 0; // 0: not started, 1: running, -1 exit
@@ -100,6 +100,10 @@ public:
     uint64_t num_lbas;
     uint32_t block_size;
     bool read_only = false;
+
+    IFile* get_base() {
+        return m_file;
+    }
 
 private:
     Prefetcher *m_prefetcher = nullptr;
@@ -113,7 +117,8 @@ private:
     LSMT::IFileRO *open_lowers(std::vector<ImageConfigNS::LayerConfig> &, bool &);
     LSMT::IFileRW *open_upper(ImageConfigNS::UpperConfig &);
     IFile *__open_ro_file(const std::string &);
-    IFile *__open_ro_remote(const std::string &dir, const std::string &, const uint64_t,
-                                        int);
+    IFile *__open_ro_data_file(const std::string &);
+    IFile *__open_ro_remote(const std::string &dir, const std::string &, const uint64_t, int);
+    IFile *__open_ro_data_remote(const std::string &dir, const std::string &, const uint64_t, int);
     void start_bk_dl_thread();
 };

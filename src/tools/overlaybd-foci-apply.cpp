@@ -22,6 +22,8 @@
 #include "../overlaybd/zfile/zfile.h"
 #include "../overlaybd/untar/libtar.h"
 #include "../overlaybd/extfs/extfs.h"
+#include "../overlaybd/rgzip/gzfile.h"
+#include "../overlaybd/gzip/gz.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -79,8 +81,23 @@ int main(int argc, char **argv) {
         exit(-1);
     }
 
+    photon::fs::IFile* src_file = nullptr;
+
     auto tarf = open_file(input_path.c_str(), O_RDONLY, 0666);
-    auto tar = new Tar(tarf, target, 0, 4096, imgfile->get_base());
+    DEFER(delete tarf);
+
+    if (is_gzfile(tarf)) {
+        auto res = create_gz_index(tarf, 1024*1024, "gzip.meta");
+        LOG_INFO("create_gz_index ", VALUE(res));
+        tarf->lseek(0, 0);
+
+        src_file = open_gzfile_adaptor(input_path.c_str());
+    } else {
+        src_file = tarf;
+    }
+
+
+    auto tar = new Tar(src_file, target, 0, 4096, imgfile->get_base());
     if (tar->extract_all() < 0) {
         fprintf(stderr, "failed to extract\n");
         exit(-1);

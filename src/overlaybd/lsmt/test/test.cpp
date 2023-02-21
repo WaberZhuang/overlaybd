@@ -790,7 +790,6 @@ IFileRO *WarpFileTest::create_commit_warpfile(int io_engine) {
     auto warpfile = create_warpfile_rw(io_engine);
     randwrite_warpfile(warpfile, FLAGS_nwrites);
     return create_commit_warpfile(warpfile);
-   
 }
 
 TEST_F(WarpFileTest, randwrite) {

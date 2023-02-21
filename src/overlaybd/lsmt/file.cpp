@@ -268,26 +268,23 @@ public:
     if (!is_aligned((size) | (offset)))                                                            \
         LOG_ERROR_RETURN(EFAULT, -1, "arguments must be aligned!");
 
-    virtual ssize_t pread(void *buf, size_t count, off_t offset) override {
-        CHECK_ALIGNMENT(count, offset);
-        auto nbytes = count;
-        while (count > MAX_IO_SIZE) {
-            auto ret = pread(buf, MAX_IO_SIZE, offset);
-            if (ret < (ssize_t)MAX_IO_SIZE)
-                return -1;
-            (char *&)buf += MAX_IO_SIZE;
-            count -= MAX_IO_SIZE;
-            offset += MAX_IO_SIZE;
-        }
+    int lookup(void *buf, size_t count, off_t offset, vector<SegmentMapping> *hole) {
+        //!!!!
         count /= ALIGNMENT;
         offset /= ALIGNMENT;
         Segment s{(uint64_t)offset, (uint32_t)count};
+        off_t buf_offset = 0;
         auto ret = foreach_segments(
             m_index, s,
             [&](const Segment &m) __attribute__((always_inline)) {
                 auto step = m.length * ALIGNMENT;
-                memset(buf, 0, step);
+                if (hole != nullptr) {
+                    hole->push_back(SegmentMapping(m.offset, m.length, buf_offset));
+                } else {
+                    memset(buf, 0, step);
+                }
                 (char *&)buf += step;
+                buf_offset += m.length;
                 return 0;
             },
             [&](const SegmentMapping &m) __attribute__((always_inline)) {
@@ -306,8 +303,24 @@ public:
                 lsmt_io_size += ret;
                 lsmt_io_cnt++;
                 (char *&)buf += size;
+                buf_offset += m.length;
                 return 0;
             });
+        return ret;
+    }
+
+    virtual ssize_t pread(void *buf, size_t count, off_t offset) override {
+        CHECK_ALIGNMENT(count, offset);
+        auto nbytes = count;
+        while (count > MAX_IO_SIZE) {
+            auto ret = pread(buf, MAX_IO_SIZE, offset);
+            if (ret < (ssize_t)MAX_IO_SIZE)
+                return -1;
+            (char *&)buf += MAX_IO_SIZE;
+            count -= MAX_IO_SIZE;
+            offset += MAX_IO_SIZE;
+        }
+        auto ret = lookup(buf, count, offset, nullptr);
         return (ret >= 0) ? nbytes : ret;
     }
 
@@ -1023,7 +1036,7 @@ public:
         LOG_DEBUG("insert segment: `, filePtr: `", m,file);
         auto ret = file->pwrite(buf, count, offset);
         if (ret != (ssize_t)count) {
-            LOG_ERRNO_RETURN(0, -1, "write failed, file:`, ret:`, pos:`, count:`", 
+            LOG_ERRNO_RETURN(0, -1, "write failed, file:`, ret:`, pos:`, count:`",
                 file, ret, offset, count);
         }
         static_cast<IMemoryIndex0 *>(m_index)->insert(m);
@@ -1048,7 +1061,7 @@ public:
         while (lba.count > 0) {
             SegmentMapping m;
             m.offset = lba.offset / ALIGNMENT;
-            m.length = (Segment::MAX_LENGTH < lba.count / ALIGNMENT ? 
+            m.length = (Segment::MAX_LENGTH < lba.count / ALIGNMENT ?
                 Segment::MAX_LENGTH : lba.count / ALIGNMENT);
             m.moffset = lba.roffset / ALIGNMENT;
             m.tag = m_rw_tag + (uint8_t)SegmentType::remoteData;
@@ -1097,7 +1110,8 @@ public:
             LOG_ERRNO_RETURN(0, -1, "write index failed");
         }
         nindex = index_size;
-        auto pos = dest_file->lseek(0, SEEK_END);
+        // auto pos = dest_file->lseek(0, SEEK_END);
+        auto pos = index_offset + index_size * sizeof(SegmentMapping);
         LOG_INFO("write index done, file_size: `", pos);
         return pos;
     }
@@ -1381,7 +1395,7 @@ IFileRW *open_warpfile_rw(IFile *findex, IFile *fsmeta_file, IFile *lba_file, IF
     auto rst = new LSMTWarpFile;
     rst->m_files.resize(2);
     LSMT::HeaderTrailer ht;
-    auto p = do_load_index(findex, &ht, false, 
+    auto p = do_load_index(findex, &ht, false,
         3);
     auto pi = create_memory_index0(p, ht.index_size, 0, -1);
     if (!pi) {

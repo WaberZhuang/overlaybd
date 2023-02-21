@@ -13,13 +13,19 @@ target_link_libraries(overlaybd-zfile photon_static overlaybd_lib)
 add_executable(overlaybd-apply overlaybd-apply.cpp)
 target_include_directories(overlaybd-apply PUBLIC ${PHOTON_INCLUDE_DIR} ${rapidjson_SOURCE_DIR}/include)
 target_link_libraries(overlaybd-apply photon_static overlaybd_lib overlaybd_image_lib)
-
 set_target_properties(overlaybd-apply PROPERTIES INSTALL_RPATH "/opt/overlaybd/lib")
+
+add_executable(overlaybd-foci-apply overlaybd-foci-apply.cpp)
+target_include_directories(overlaybd-foci-apply PUBLIC ${PHOTON_INCLUDE_DIR} ${rapidjson_SOURCE_DIR}/include)
+target_link_libraries(overlaybd-foci-apply photon_static overlaybd_lib overlaybd_image_lib)
+set_target_properties(overlaybd-foci-apply PROPERTIES INSTALL_RPATH "/opt/overlaybd/lib")
+
 
 install(TARGETS
     overlaybd-commit
     overlaybd-create
     overlaybd-zfile
     overlaybd-apply
+    overlaybd-foci-apply
     DESTINATION /opt/overlaybd/bin
 )
