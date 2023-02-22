@@ -304,32 +304,6 @@ int Tar::extract_all() {
 
 	LOG_DEBUG("extract ` file", count);
 
-	// insert lsmt segments
-	for (auto m: mappings) {
-		auto size = m.second.fm_mapped_extents;
-        auto rstart = m.first;
-        for (int i = 0; i < size; i++) {
-			LSMT::RemoteMapping lba;
-			auto left = m.second.fm_extents[i].fe_length;
-			lba.offset = m.second.fm_extents[i].fe_physical;
-			lba.roffset = rstart;
-            rstart += m.second.fm_extents[i].fe_length;
-			while (left > 0) {
-				size_t len = 0;
-				if (left > LSMT::Segment::MAX_LENGTH * 512) {
-					len = LSMT::Segment::MAX_LENGTH * 512;
-				} else {
-					len = left;
-				}
-				lba.count = len;
-				((LSMT::IFileRW*)fs_base_file)->ioctl(LSMT::IFileRW::RemoteData, lba);
-				left -= len;
-				lba.offset += len;
-				lba.roffset += len;
-			}
-        }
-	}
-
 	return (i == 1 ? 0 : -1);
 }
 
@@ -417,10 +391,10 @@ int Tar::extract_file() {
 	return 0;
 }
 
-int Tar::extract_regfile(const char *filename) {
+int Tar::extract_regfile_fastoci(const char *filename) {
 	size_t size = get_size();
 
-	LOG_DEBUG("  ==> extracting: ` (` bytes)\n", filename, size);
+	LOG_DEBUG("  ==> extracting: ` (` bytes) (fastoci index)\n", filename, size);
 	photon::fs::IFile *fout = fs->open(filename, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0666);
 	if (fout == nullptr) {
 		return -1;
@@ -431,13 +405,62 @@ int Tar::extract_regfile(const char *filename) {
 	fout->fallocate(0, 0, size);
 	struct photon::fs::fiemap_t<512> fie(0, size);
 	fout->fiemap(&fie);
-	mappings.push_back({p, fie});
+	for (int i = 0; i < fie.fm_mapped_extents; i++) {
+        LSMT::RemoteMapping lba;
+        lba.offset = fie.fm_extents[i].fe_physical;
+        lba.count = fie.fm_extents[i].fe_length;
+        lba.roffset = p;
+        int nwrite = fs_base_file->ioctl(LSMT::IFileRW::RemoteData, lba);
+        if (nwrite < 0) {
+            LOG_ERRNO_RETURN(0, -1, "failed to write lba");
+        }
+        p += nwrite;
+    }
 
 	struct stat st;
 	fout->fstat(&st);
-	LOG_INFO("reg file size `", st.st_size);
+	LOG_DEBUG("reg file size `", st.st_size);
 
 	file->lseek( ((size+511)/512)*512, SEEK_CUR); // skip size
+	return 0;
+}
+
+int Tar::extract_regfile(const char *filename) {
+    if (build_fastoci) {
+        return extract_regfile_fastoci(filename);
+    }
+
+	size_t size = get_size();
+
+	LOG_DEBUG("  ==> extracting: ` (` bytes)\n", filename, size);
+	photon::fs::IFile *fout = fs->open(filename, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0666);
+	if (fout == nullptr) {
+		return -1;
+	}
+	DEFER({delete fout;});
+
+	char buf[1024*1024];
+	off_t pos = 0;
+	size_t left = size;
+	while (left > 0) {
+		size_t rsz;
+		if (left > 1024 * 1024)
+			rsz = 1024 * 1024;
+		else if (left > fs_blocksize)
+			rsz = left & fs_blockmask;
+		else
+			rsz = (left & ~T_BLOCKMASK) ? (left & T_BLOCKMASK) + T_BLOCKSIZE : (left & T_BLOCKMASK);
+		if (file->read(buf, rsz) != rsz) {
+			LOG_ERRNO_RETURN(0, -1, "failed to read block");
+		}
+		size_t wsz = (left < rsz) ? left : rsz;
+		if (fout->pwrite(buf, wsz, pos) != wsz) {
+			LOG_ERRNO_RETURN(0, -1, "failed to write file");
+		}
+		pos += wsz;
+		left -= wsz;
+		// LOG_DEBUG(VALUE(rsz), VALUE(wsz), VALUE(pos), VALUE(left));
+	}
 	return 0;
 }
 

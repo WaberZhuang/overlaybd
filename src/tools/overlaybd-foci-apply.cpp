@@ -97,7 +97,7 @@ int main(int argc, char **argv) {
     }
 
 
-    auto tar = new Tar(src_file, target, 0, 4096, imgfile->get_base());
+    auto tar = new Tar(src_file, target, 0, 4096, imgfile->get_base(), true);
     if (tar->extract_all() < 0) {
         fprintf(stderr, "failed to extract\n");
         exit(-1);
