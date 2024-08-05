@@ -992,22 +992,26 @@ bool load_jump_table(IFile *file, CompressionFile::HeaderTrailer *pheader_traile
         LOG_INFO("read overwrite header. idx_offset: `, idx_bytes: `, dict_size: `, use_dict: `",
                  pht->index_offset, index_bytes, pht->opt.dict_size, pht->opt.use_dict);
     }
-    auto ibuf = std::unique_ptr<uint32_t[]>(new uint32_t[pht->index_size]);
+    auto ibuf = new uint32_t[pht->index_size];
+    DEFER(delete[] ibuf);
+    // auto ibuf = std::unique_ptr<uint32_t[]>(new uint32_t[pht->index_size]);
+    LOG_INFO(VALUE((void*) ibuf), VALUE(index_bytes));
     LOG_DEBUG("index_offset: `", pht->index_offset);
-    ret = file->pread((void *)(ibuf.get()), index_bytes, pht->index_offset);
+    ret = file->pread((void *)(ibuf), index_bytes, pht->index_offset);
     if (ret < (ssize_t)index_bytes) {
         LOG_ERRNO_RETURN(0, false, "failed to read index");
     }
     if (pht->is_digest_enabled()) {
         LOG_INFO("check jumptable CRC32 (` expected)", HEX(pht->index_crc).width(8));
-        auto crc = crc32::crc32c(ibuf.get(), index_bytes);
+        LOG_INFO(VALUE((void*) ibuf), VALUE(index_bytes));
+        auto crc = crc32::crc32c(ibuf, index_bytes);
         if (crc != pht->index_crc) {
             LOG_ERRNO_RETURN(0, false, "checksum of jumptable is incorrect. {got: `, expected: `}",
                  HEX(crc).width(8),  HEX(pht->index_crc).width(8)
             );
         }
     }
-    ret = jump_table.build(ibuf.get(), pht->index_size,
+    ret = jump_table.build(ibuf, pht->index_size,
                            CompressionFile::HeaderTrailer::SPACE + pht->opt.dict_size,
                            pht->opt.block_size, pht->opt.verify);
     if (ret != 0) {
