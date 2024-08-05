@@ -36,7 +36,7 @@
 #include "overlaybd/gzindex/gzfile.h"
 #include "overlaybd/tar/tar_file.h"
 
-#define PARALLEL_LOAD_INDEX 32
+#define PARALLEL_LOAD_INDEX 1
 using namespace photon::fs;
 
 #define SET_LOCAL_DIR 118
