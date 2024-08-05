@@ -55,6 +55,8 @@ static uint32_t crc32c_hw(const uint8_t *data, size_t nbytes, uint32_t crc) {
     uint32_t sum = crc;
     size_t offset = 0;
 
+    LOG_INFO(VALUE((void*) data), VALUE(nbytes));
+
     // Process bytes one at a time until we reach an 8-byte boundary and can
     // start doing aligned 64-bit reads.
     static uintptr_t ALIGN_MASK = sizeof(uint64_t) - 1;
